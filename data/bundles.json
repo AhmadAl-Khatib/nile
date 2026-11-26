@@ -1,0 +1,98 @@
+{
+  "settings": {
+    "brandName": "Nile Horizon Private Tours",
+    "brandTagline": "Egypt Private Group Transfers",
+    "driverName": "Sample Driver Name",
+    "whatsappNumber": "201000000000",
+    "phoneDisplay": "+20 100 000 0000",
+    "contactEmail": "bookings@example.com",
+    "exchangeRates": {
+      "USD": 1,
+      "EUR": 0.92,
+      "GBP": 0.79,
+      "EGP": 49.0
+    }
+  },
+  "bundles": [
+    {
+      "id": "giza-pyramids-gem-vip",
+      "active": true,
+      "badge": "Best Seller",
+      "region": "Cairo & Giza",
+      "title": "Giza Pyramids, Sphinx & Grand Egyptian Museum",
+      "duration": "Full Day (9 Hours)",
+      "maxGuests": 24,
+      "pricesByVehicle": {
+        "sedan": 85,
+        "hiace": 135,
+        "coaster": 220
+      },
+      "image": "assets/images/bundles/giza-day.webp",
+      "highlights": [
+        "Private A/C vehicle with Cairo or Giza hotel pickup",
+        "All fuel, highway tolls, parking & chilled water included",
+        "Flexible photo stops with zero forced shopping detours"
+      ]
+    },
+    {
+      "id": "alexandria-mediterranean-escape",
+      "active": true,
+      "badge": "Group Deal",
+      "region": "Alexandria",
+      "title": "Alexandria Coastal Day Trip from Cairo",
+      "duration": "Full Day (12 Hours)",
+      "maxGuests": 24,
+      "pricesByVehicle": {
+        "sedan": 130,
+        "hiace": 195,
+        "coaster": 310
+      },
+      "image": "assets/images/bundles/alexandria-day.webp",
+      "highlights": [
+        "Round-trip desert highway transfer in modern A/C comfort",
+        "Qaitbay Citadel, Bibliotheca Alexandrina & Catacombs stops",
+        "Seaside lunch stop along the Corniche at your pace"
+      ]
+    },
+    {
+      "id": "luxor-east-west-banks",
+      "active": true,
+      "badge": "VIP Heritage",
+      "region": "Luxor & Aswan",
+      "title": "Luxor Valley of the Kings, Hatshepsut & Karnak",
+      "duration": "Full Day (8–9 Hours)",
+      "maxGuests": 24,
+      "pricesByVehicle": {
+        "sedan": 95,
+        "hiace": 150,
+        "coaster": 245
+      },
+      "image": "assets/images/bundles/luxor-aswan.webp",
+      "highlights": [
+        "Seamless East & West Bank private troop coordination",
+        "Early sunrise departures available to beat midday crowds",
+        "Optional add-on for licensed Egyptologist tour guide"
+      ]
+    },
+    {
+      "id": "cairo-hurghada-red-sea",
+      "active": true,
+      "badge": "Direct Transfer",
+      "region": "Red Sea",
+      "title": "Cairo to Hurghada / El Gouna Private Group Transfer",
+      "duration": "One-Way (~5.5 Hours)",
+      "maxGuests": 24,
+      "pricesByVehicle": {
+        "sedan": 155,
+        "hiace": 225,
+        "coaster": 360
+      },
+      "image": "assets/images/bundles/red-sea-transfer.webp",
+      "highlights": [
+        "Door-to-door pickup from Cairo Airport or hotel to resort",
+        "Generous luggage space for diving gear & large suitcases",
+        "Scheduled comfort breaks along the Red Sea highway"
+      ]
+    }
+  ]
+}
