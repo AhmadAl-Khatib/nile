@@ -1619,4 +1619,661 @@
             const waClean = (s.whatsappNumber || '').replace(/\D/g, '');
             const waUrl = `https://wa.me/${waClean}?text=${encodeURIComponent(`Hello ${s.brandName}, I would like to inquire about a private group tour in Egypt.`)}`;
 
-            document.getElementById('headerWaBtn
+            document.getElementById('headerWaBtn').href = waUrl;
+            document.getElementById('floatWaBtn').href = waUrl;
+
+            document.querySelectorAll('[data-bind-href="tel"]').forEach(el => {
+                el.href = `tel:+${waClean}`;
+            });
+            document.querySelectorAll('[data-bind-href="mailto"]').forEach(el => {
+                el.href = `mailto:${s.contactEmail}`;
+            });
+        }
+
+        function renderRegionPills() {
+            const activeBundles = appData.bundles.filter(b => b.active !== false);
+            const regions = ['All', ...new Set(activeBundles.map(b => b.region))];
+            const container = document.getElementById('regionPills');
+            if (!regions.includes(activeRegion)) activeRegion = 'All';
+
+            container.innerHTML = regions.map(r => `
+                <button type="button" class="pill ${r === activeRegion ? 'active' : ''}" data-region="${esc(r)}">
+                    ${esc(r)}
+                </button>
+            `).join('');
+
+            container.querySelectorAll('button').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    activeRegion = btn.dataset.region;
+                    renderRegionPills();
+                    renderBundlesGrid();
+                });
+            });
+        }
+
+        function renderBundlesGrid() {
+            const grid = document.getElementById('bundlesGrid');
+            const filtered = appData.bundles.filter(b =>
+                b.active !== false && (activeRegion === 'All' || b.region === activeRegion)
+            );
+
+            if (!filtered.length) {
+                grid.innerHTML = `<p style="grid-column:1/-1; text-align:center; padding:2rem;">No active bundles in this region yet. Use the Custom Route option below to request any itinerary in Egypt.</p>`;
+                return;
+            }
+
+            const vMeta = VEHICLE_META[activeVehicle];
+            grid.innerHTML = filtered.map(b => {
+                const usdPrice = (b.pricesByVehicle && b.pricesByVehicle[activeVehicle]) || 120;
+                const perPersonUsd = Math.max(1, Math.round(usdPrice / vMeta.divisor));
+                const previewSrc = pendingUploads[b.image]?.dataUrl || b.image;
+
+                return `
+                <article class="bundle-card">
+                    <div class="bundle-media">
+                        <img src="${esc(previewSrc)}" alt="${esc(b.title)}" loading="lazy" onerror="this.style.display='none'">
+                        ${b.badge ? `<span class="bundle-badge">${esc(b.badge)}</span>` : ''}
+                        <span class="bundle-region-tag">${esc(b.region)}</span>
+                    </div>
+                    <div class="bundle-body">
+                        <div class="bundle-meta">
+                            <span>${esc(b.duration)}</span>
+                            <span>Up to ${esc(b.maxGuests || 24)} Guests</span>
+                        </div>
+                        <h3 class="bundle-title">${esc(b.title)}</h3>
+                        <ul class="bundle-highlights">
+                            ${(b.highlights || []).map(h => `<li>${esc(h)}</li>`).join('')}
+                        </ul>
+                        <div class="bundle-footer">
+                            <div class="price-box">
+                                <strong>${formatMoney(usdPrice)}</strong>
+                                <small>${esc(vMeta.name)} &bull; ~${formatMoney(perPersonUsd)}/person</small>
+                            </div>
+                            <button type="button" class="btn btn-dark btn-sm book-this-btn" data-id="${esc(b.id)}">
+                                Book Bundle
+                            </button>
+                        </div>
+                    </div>
+                </article>`;
+            }).join('');
+
+            grid.querySelectorAll('.book-this-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    setBookingMode('bundle');
+                    document.getElementById('bookBundle').value = btn.dataset.id;
+                    updateBookingSummary();
+                    document.getElementById('booking').scrollIntoView({ behavior: 'smooth' });
+                });
+            });
+        }
+
+        function renderFleetState() {
+            document.querySelectorAll('.pill-vehicle').forEach(p => {
+                p.classList.toggle('active', p.dataset.vehicle === activeVehicle);
+            });
+            document.querySelectorAll('.fleet-card').forEach(c => {
+                c.classList.toggle('selected', c.dataset.fleet === activeVehicle);
+            });
+        }
+
+        function setVehicleTier(tier) {
+            activeVehicle = tier;
+            const guestInput = document.getElementById('guestCount');
+            if (tier === 'sedan' && guestInput.value > 3) guestInput.value = 2;
+            if (tier === 'hiace' && (guestInput.value < 4 || guestInput.value > 10)) guestInput.value = 6;
+            if (tier === 'coaster' && guestInput.value < 11) guestInput.value = 14;
+            renderFleetState();
+            renderBundlesGrid();
+            updateBookingSummary();
+        }
+
+        function populateBookingDropdown() {
+            const select = document.getElementById('bookBundle');
+            const currentVal = select.value;
+            const active = appData.bundles.filter(b => b.active !== false);
+            select.innerHTML = active.map(b =>
+                `<option value="${esc(b.id)}">${esc(b.title)} (${esc(b.region)})</option>`
+            ).join('');
+            if (currentVal && active.some(b => b.id === currentVal)) select.value = currentVal;
+        }
+
+        function updateAddonCurrencyLabels() {
+            document.querySelectorAll('[data-usd-label]').forEach(el => {
+                el.textContent = formatMoney(Number(el.dataset.usdLabel));
+            });
+        }
+
+        function setBookingMode(mode) {
+            bookingMode = mode;
+            document.getElementById('tabBundleMode').classList.toggle('active', mode === 'bundle');
+            document.getElementById('tabCustomMode').classList.toggle('active', mode === 'custom');
+            document.getElementById('bundleSelectWrap').style.display = mode === 'bundle' ? '' : 'none';
+            document.getElementById('customRouteWrap').style.display = mode === 'custom' ? '' : 'none';
+            updateBookingSummary();
+        }
+
+        function getRecommendedVehicleByCount(count) {
+            if (count <= 3) return 'sedan';
+            if (count <= 10) return 'hiace';
+            return 'coaster';
+        }
+
+        function computeBookingSnapshot() {
+            const guests = Math.max(1, Math.min(24, Number(document.getElementById('guestCount').value) || 1));
+            const vehKey = getRecommendedVehicleByCount(guests);
+            const veh = VEHICLE_META[vehKey];
+
+            const checkedAddons = [...document.querySelectorAll('.addon-input:checked')];
+            const addonsUsd = checkedAddons.reduce((sum, el) => sum + Number(el.dataset.usd || 0), 0);
+            const addonNames = checkedAddons.map(el => el.value);
+
+            let title = 'Custom Egypt Route';
+            let baseUsd = 0;
+
+            if (bookingMode === 'bundle') {
+                const selectedId = document.getElementById('bookBundle').value;
+                const bundle = appData.bundles.find(b => b.id === selectedId) || appData.bundles[0];
+                if (bundle) {
+                    title = bundle.title;
+                    baseUsd = (bundle.pricesByVehicle && bundle.pricesByVehicle[vehKey]) || 120;
+                }
+            } else {
+                title = document.getElementById('customRoute').value.trim() || 'Custom Egypt Itinerary';
+            }
+
+            const totalUsd = baseUsd + addonsUsd;
+            return { guests, vehKey, veh, addonNames, addonsUsd, title, baseUsd, totalUsd };
+        }
+
+        function updateBookingSummary() {
+            const snap = computeBookingSnapshot();
+            document.getElementById('sumTitle').textContent = snap.title;
+            document.getElementById('sumGuests').textContent = `${snap.guests} Traveler${snap.guests > 1 ? 's' : ''}`;
+            document.getElementById('sumVehicle').textContent = snap.veh.name;
+            document.getElementById('sumAddons').textContent = snap.addonNames.length ? snap.addonNames.join(', ') : 'None';
+
+            if (bookingMode === 'custom') {
+                document.getElementById('sumTotal').textContent = snap.addonsUsd > 0 ? `Custom + ${formatMoney(snap.addonsUsd)}` : 'Custom Quote';
+                document.getElementById('sumSplit').textContent = 'Driver will confirm exact flat vehicle fare for your custom route on WhatsApp.';
+            } else {
+                document.getElementById('sumTotal').textContent = formatMoney(snap.totalUsd);
+                const split = Math.round(snap.totalUsd / snap.guests);
+                document.getElementById('sumSplit').textContent = `Approx. ${formatMoney(split)} per person across ${snap.guests} traveler${snap.guests > 1 ? 's' : ''}.`;
+            }
+        }
+
+        function buildBookingTicketText() {
+            const snap = computeBookingSnapshot();
+            const name = document.getElementById('guestName').value.trim();
+            const phone = document.getElementById('guestPhone').value.trim();
+            const email = document.getElementById('guestEmail').value.trim();
+            const date = document.getElementById('tripDate').value;
+            const pickup = document.getElementById('pickupLocation').value.trim() || 'TBD';
+            const notes = document.getElementById('guestNotes').value.trim() || 'None';
+            const totalLine = bookingMode === 'custom' ? 'Custom Route Quote Requested' : `${formatMoney(snap.totalUsd)} (${activeCurrency})`;
+
+            return [
+                `*NEW GROUP BOOKING — ${appData.settings.brandName}*`,
+                `----------------------------------`,
+                `Trip: ${snap.title}`,
+                `Date: ${date}`,
+                `Travelers: ${snap.guests} (${snap.veh.name})`,
+                `Pickup: ${pickup}`,
+                `Add-Ons: ${snap.addonNames.length ? snap.addonNames.join(', ') : 'None'}`,
+                `Estimated Fare: ${totalLine}`,
+                `----------------------------------`,
+                `Name: ${name}`,
+                `Phone/WhatsApp: ${phone}`,
+                `Email: ${email}`,
+                `Notes: ${notes}`
+            ].join('\n');
+        }
+
+        /* ==========================================================================
+           Dynamic JSON-LD Schema for Google & AI Travel Engines
+           ========================================================================== */
+        function injectDynamicSchema() {
+            const s = appData.settings;
+            const active = appData.bundles.filter(b => b.active !== false);
+            const graph = {
+                "@context": "https://schema.org",
+                "@graph": [
+                    {
+                        "@type": "TravelAgency",
+                        "@id": `${window.location.origin}/#agency`,
+                        "name": s.brandName,
+                        "telephone": s.phoneDisplay,
+                        "email": s.contactEmail,
+                        "areaServed": "Egypt",
+                        "hasOfferCatalog": {
+                            "@type": "OfferCatalog",
+                            "name": "Egypt Private Group Tour Bundles",
+                            "itemListElement": active.map(b => ({
+                                "@type": "Offer",
+                                "priceCurrency": "USD",
+                                "price": b.pricesByVehicle?.sedan || 85,
+                                "itemOffered": {
+                                    "@type": "TouristTrip",
+                                    "name": b.title,
+                                    "description": (b.highlights || []).join('. '),
+                                    "touristType": "Private Groups & Families"
+                                }
+                            }))
+                        }
+                    }
+                ]
+            };
+            document.getElementById('dynamic-schema').textContent = JSON.stringify(graph);
+        }
+
+        /* ==========================================================================
+           Provider Studio (#admin) — Edit, Compress Photos, Export & GitHub Publish
+           ========================================================================== */
+        function renderAdminList() {
+            const list = document.getElementById('adminBundlesList');
+            document.getElementById('adminBundleCount').textContent = appData.bundles.length;
+
+            list.innerHTML = appData.bundles.map(b => `
+                <div class="admin-bundle-row ${b.active === false ? 'paused' : ''}">
+                    <div>
+                        <strong>${esc(b.title)}</strong>
+                        <div style="font-size:0.8rem; color:var(--text-muted);">
+                            ${esc(b.region)} &bull; Sedan $${b.pricesByVehicle?.sedan} / Van $${b.pricesByVehicle?.hiace} / Bus $${b.pricesByVehicle?.coaster}
+                            ${b.active === false ? ' &bull; <em>PAUSED</em>' : ''}
+                        </div>
+                    </div>
+                    <div class="admin-row-actions">
+                        <button type="button" class="btn btn-outline btn-sm" data-act="edit" data-id="${esc(b.id)}">Edit</button>
+                        <button type="button" class="btn btn-outline btn-sm" data-act="toggle" data-id="${esc(b.id)}">${b.active === false ? 'Activate' : 'Pause'}</button>
+                        <button type="button" class="btn btn-outline btn-sm" data-act="delete" data-id="${esc(b.id)}" style="color:#9b2226; border-color:#9b2226;">Delete</button>
+                    </div>
+                </div>
+            `).join('');
+
+            list.querySelectorAll('button').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const id = btn.dataset.id;
+                    const idx = appData.bundles.findIndex(x => x.id === id);
+                    if (idx === -1) return;
+
+                    if (btn.dataset.act === 'toggle') {
+                        appData.bundles[idx].active = appData.bundles[idx].active === false;
+                        saveDraft();
+                    } else if (btn.dataset.act === 'delete') {
+                        if (confirm(`Delete "${appData.bundles[idx].title}"?`)) {
+                            appData.bundles.splice(idx, 1);
+                            saveDraft();
+                        }
+                    } else if (btn.dataset.act === 'edit') {
+                        const b = appData.bundles[idx];
+                        document.getElementById('editBundleId').value = b.id;
+                        document.getElementById('editorHeading').textContent = 'Edit Tour Bundle';
+                        document.getElementById('edTitle').value = b.title;
+                        document.getElementById('edRegion').value = b.region;
+                        document.getElementById('edDuration').value = b.duration;
+                        document.getElementById('edBadge').value = b.badge || '';
+                        document.getElementById('edMaxGuests').value = b.maxGuests || 24;
+                        document.getElementById('edPriceSedan').value = b.pricesByVehicle?.sedan || 85;
+                        document.getElementById('edPriceHiace').value = b.pricesByVehicle?.hiace || 135;
+                        document.getElementById('edPriceCoaster').value = b.pricesByVehicle?.coaster || 220;
+                        document.getElementById('edImagePath').value = b.image || '';
+                        document.getElementById('edHighlights').value = (b.highlights || []).join('\n');
+                        document.getElementById('cancelEditBtn').style.display = 'inline-flex';
+                        document.getElementById('bundleEditorForm').scrollIntoView({ behavior: 'smooth' });
+                    }
+                });
+            });
+        }
+
+        function populateSettingsForm() {
+            const s = appData.settings;
+            document.getElementById('setBrandName').value = s.brandName || '';
+            document.getElementById('setTagline').value = s.brandTagline || '';
+            document.getElementById('setDriverName').value = s.driverName || '';
+            document.getElementById('setWhatsapp').value = s.whatsappNumber || '';
+            document.getElementById('setPhoneDisplay').value = s.phoneDisplay || '';
+            document.getElementById('setEmail').value = s.contactEmail || '';
+            document.getElementById('setRateEur').value = s.exchangeRates?.EUR ?? 0.92;
+            document.getElementById('setRateGbp').value = s.exchangeRates?.GBP ?? 0.79;
+            document.getElementById('setRateEgp').value = s.exchangeRates?.EGP ?? 49.0;
+        }
+
+        function compressImageFile(file, maxWidth = 1200, quality = 0.8) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const scale = Math.min(1, maxWidth / img.width);
+                        const canvas = document.createElement('canvas');
+                        canvas.width = Math.round(img.width * scale);
+                        canvas.height = Math.round(img.height * scale);
+                        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                        let dataUrl = canvas.toDataURL('image/webp', quality);
+                        let ext = 'webp';
+                        if (!dataUrl.startsWith('data:image/webp')) {
+                            dataUrl = canvas.toDataURL('image/jpeg', quality);
+                            ext = 'jpg';
+                        }
+                        resolve({ dataUrl, ext, base64: dataUrl.split(',')[1] });
+                    };
+                    img.onerror = reject;
+                    img.src = reader.result;
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function utf8ToBase64(str) {
+            const bytes = new TextEncoder().encode(str);
+            let binary = '';
+            bytes.forEach(b => binary += String.fromCharCode(b));
+            return btoa(binary);
+        }
+
+        async function githubUpsertFile(repo, branch, token, path, base64Content, message) {
+            const apiUrl = `https://api.github.com/repos/${repo}/contents/${path}`;
+            const headers = {
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/vnd.github+json',
+                'Content-Type': 'application/json'
+            };
+
+            let sha;
+            const check = await fetch(`${apiUrl}?ref=${encodeURIComponent(branch)}`, { headers });
+            if (check.ok) {
+                const existing = await check.json();
+                sha = existing.sha;
+            }
+
+            const payload = { message, content: base64Content, branch };
+            if (sha) payload.sha = sha;
+
+            const put = await fetch(apiUrl, { method: 'PUT', headers, body: JSON.stringify(payload) });
+            if (!put.ok) {
+                const err = await put.json().catch(() => ({}));
+                throw new Error(err.message || `GitHub API error (${put.status})`);
+            }
+            return put.json();
+        }
+
+        /* ==========================================================================
+           Event Listeners & Boot
+           ========================================================================== */
+        document.addEventListener('DOMContentLoaded', () => {
+            // Sticky Header
+            const header = document.getElementById('siteHeader');
+            window.addEventListener('scroll', () => {
+                header.classList.toggle('scrolled', window.scrollY > 45);
+            }, { passive: true });
+
+            // Mobile Menu
+            const menuBtn = document.getElementById('menuBtn');
+            const navLinks = document.getElementById('navLinks');
+            menuBtn.addEventListener('click', () => {
+                const open = navLinks.classList.toggle('open');
+                menuBtn.setAttribute('aria-expanded', String(open));
+                menuBtn.textContent = open ? '✕' : '☰';
+            });
+            navLinks.querySelectorAll('a').forEach(a => a.addEventListener('click', () => {
+                navLinks.classList.remove('open');
+                menuBtn.setAttribute('aria-expanded', 'false');
+                menuBtn.textContent = '☰';
+            }));
+
+            // Currency Switcher
+            document.getElementById('currencySelect').addEventListener('change', (e) => {
+                activeCurrency = e.target.value;
+                renderBundlesGrid();
+                updateAddonCurrencyLabels();
+                updateBookingSummary();
+            });
+
+            // Quick Trip Bar
+            document.getElementById('quickSearchBtn').addEventListener('click', () => {
+                activeRegion = document.getElementById('quickRegion').value;
+                const qVeh = document.getElementById('quickVehicle').value;
+                const qDate = document.getElementById('quickDate').value;
+                if (qDate) document.getElementById('tripDate').value = qDate;
+                setVehicleTier(qVeh);
+                renderRegionPills();
+                document.getElementById('bundles').scrollIntoView({ behavior: 'smooth' });
+            });
+
+            // Vehicle Pills & Fleet Buttons
+            document.querySelectorAll('.pill-vehicle, .select-fleet-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    setVehicleTier(btn.dataset.vehicle);
+                    if (btn.classList.contains('select-fleet-btn')) {
+                        document.getElementById('bundles').scrollIntoView({ behavior: 'smooth' });
+                    }
+                });
+            });
+
+            // Booking Mode & Live Summary Updates
+            document.getElementById('tabBundleMode').addEventListener('click', () => setBookingMode('bundle'));
+            document.getElementById('tabCustomMode').addEventListener('click', () => setBookingMode('custom'));
+            ['bookBundle', 'customRoute', 'guestCount'].forEach(id => {
+                document.getElementById(id).addEventListener('input', updateBookingSummary);
+                document.getElementById(id).addEventListener('change', updateBookingSummary);
+            });
+            document.querySelectorAll('.addon-input').forEach(cb => cb.addEventListener('change', updateBookingSummary));
+
+            // Submit Booking -> WhatsApp
+            document.getElementById('bookingForm').addEventListener('submit', (e) => {
+                e.preventDefault();
+                const waDigits = (appData.settings.whatsappNumber || '').replace(/\D/g, '');
+                const text = encodeURIComponent(buildBookingTicketText());
+                window.open(`https://wa.me/${waDigits}?text=${text}`, '_blank', 'noopener,noreferrer');
+            });
+
+            // Submit Booking -> Direct Email
+            document.getElementById('sendEmailBtn').addEventListener('click', () => {
+                const form = document.getElementById('bookingForm');
+                if (!form.reportValidity()) return;
+                const subject = encodeURIComponent(`Group Booking Request — ${appData.settings.brandName}`);
+                const body = encodeURIComponent(buildBookingTicketText());
+                window.location.href = `mailto:${appData.settings.contactEmail}?subject=${subject}&body=${body}`;
+            });
+
+            // Admin Modal Controls (#admin hash or Footer Button)
+            const adminModal = document.getElementById('adminModal');
+            const openAdmin = () => adminModal.classList.add('open');
+            const closeAdmin = () => {
+                adminModal.classList.remove('open');
+                if (window.location.hash === '#admin') history.replaceState(null, '', ' ');
+            };
+
+            document.getElementById('openAdminBtn').addEventListener('click', openAdmin);
+            document.getElementById('closeAdminBtn').addEventListener('click', closeAdmin);
+            adminModal.addEventListener('click', (e) => { if (e.target === adminModal) closeAdmin(); });
+            if (window.location.hash === '#admin') openAdmin();
+            window.addEventListener('hashchange', () => { if (window.location.hash === '#admin') openAdmin(); });
+
+            // Admin Tabs
+            document.querySelectorAll('.admin-tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
+                    document.querySelectorAll('.admin-panel').forEach(p => p.classList.remove('active'));
+                    tab.classList.add('active');
+                    document.getElementById(`panel-${tab.dataset.adminTab}`).classList.add('active');
+                });
+            });
+
+            // Photo Upload & Auto-Compression in Admin
+            document.getElementById('edImageFile').addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const hint = document.getElementById('edImageHint');
+                hint.textContent = 'Compressing photo...';
+                try {
+                    const result = await compressImageFile(file);
+                    const slug = (document.getElementById('edTitle').value || file.name.replace(/\.[^.]+$/, ''))
+                        .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `bundle-${Date.now()}`;
+                    const repoPath = `assets/images/bundles/${slug}.${result.ext}`;
+                    pendingUploads[repoPath] = result;
+                    document.getElementById('edImagePath').value = repoPath;
+                    document.getElementById('downloadPendingImgsBtn').style.display = 'inline-flex';
+                    hint.textContent = `Ready: ${repoPath} (~${Math.round(result.base64.length * 0.75 / 1024)} KB)`;
+                } catch {
+                    hint.textContent = 'Could not compress image. Please try a JPG or PNG file.';
+                }
+            });
+
+            // Save New / Edited Bundle
+            const resetBundleEditor = () => {
+                document.getElementById('bundleEditorForm').reset();
+                document.getElementById('editBundleId').value = '';
+                document.getElementById('editorHeading').textContent = 'Add New Tour Bundle';
+                document.getElementById('cancelEditBtn').style.display = 'none';
+                document.getElementById('edImageHint').textContent = 'Compressed automatically to WebP/JPEG for fast loading & GitHub upload.';
+            };
+            document.getElementById('cancelEditBtn').addEventListener('click', resetBundleEditor);
+
+            document.getElementById('bundleEditorForm').addEventListener('submit', (e) => {
+                e.preventDefault();
+                const editId = document.getElementById('editBundleId').value;
+                const title = document.getElementById('edTitle').value.trim();
+                const id = editId || `${title.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)}-${Date.now().toString().slice(-4)}`;
+
+                const bundleObj = {
+                    id,
+                    active: true,
+                    badge: document.getElementById('edBadge').value.trim(),
+                    region: document.getElementById('edRegion').value,
+                    title,
+                    duration: document.getElementById('edDuration').value.trim(),
+                    maxGuests: Number(document.getElementById('edMaxGuests').value) || 24,
+                    pricesByVehicle: {
+                        sedan: Number(document.getElementById('edPriceSedan').value),
+                        hiace: Number(document.getElementById('edPriceHiace').value),
+                        coaster: Number(document.getElementById('edPriceCoaster').value)
+                    },
+                    image: document.getElementById('edImagePath').value.trim() || 'assets/images/bundles/giza-day.webp',
+                    highlights: document.getElementById('edHighlights').value.split('\n').map(s => s.trim()).filter(Boolean)
+                };
+
+                if (editId) {
+                    const idx = appData.bundles.findIndex(b => b.id === editId);
+                    if (idx !== -1) appData.bundles[idx] = { ...appData.bundles[idx], ...bundleObj };
+                } else {
+                    appData.bundles.unshift(bundleObj);
+                }
+
+                saveDraft();
+                resetBundleEditor();
+            });
+
+            // Save Brand & Contact Settings
+            document.getElementById('settingsForm').addEventListener('submit', (e) => {
+                e.preventDefault();
+                appData.settings = {
+                    brandName: document.getElementById('setBrandName').value.trim(),
+                    brandTagline: document.getElementById('setTagline').value.trim(),
+                    driverName: document.getElementById('setDriverName').value.trim(),
+                    whatsappNumber: document.getElementById('setWhatsapp').value.replace(/\D/g, ''),
+                    phoneDisplay: document.getElementById('setPhoneDisplay').value.trim(),
+                    contactEmail: document.getElementById('setEmail').value.trim(),
+                    exchangeRates: {
+                        USD: 1,
+                        EUR: Number(document.getElementById('setRateEur').value) || 0.92,
+                        GBP: Number(document.getElementById('setRateGbp').value) || 0.79,
+                        EGP: Number(document.getElementById('setRateEgp').value) || 49.0
+                    }
+                };
+                saveDraft();
+                alert('Settings updated in live preview. Go to Tab 3 (Publish to GitHub) to save permanently.');
+            });
+
+            // Option A: Export JSON & Photos
+            const showStatus = (msg) => {
+                const el = document.getElementById('publishStatus');
+                el.innerHTML = msg;
+                el.classList.add('show');
+            };
+
+            document.getElementById('downloadJsonBtn').addEventListener('click', () => {
+                const blob = new Blob([JSON.stringify(appData, null, 2)], { type: 'application/json' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = 'bundles.json';
+                a.click();
+                showStatus('Downloaded <strong>bundles.json</strong>. Upload it to <code>data/bundles.json</code> in your GitHub repo.');
+            });
+
+            document.getElementById('copyJsonBtn').addEventListener('click', async () => {
+                await navigator.clipboard.writeText(JSON.stringify(appData, null, 2));
+                showStatus('Copied JSON to clipboard. Paste it into <code>data/bundles.json</code> on GitHub.');
+            });
+
+            document.getElementById('downloadPendingImgsBtn').addEventListener('click', () => {
+                Object.entries(pendingUploads).forEach(([path, img]) => {
+                    const a = document.createElement('a');
+                    a.href = img.dataUrl;
+                    a.download = path.split('/').pop();
+                    a.click();
+                });
+                showStatus('Downloaded uploaded photo(s). Place them in <code>assets/images/bundles/</code> on GitHub.');
+            });
+
+            document.getElementById('resetDraftBtn').addEventListener('click', () => {
+                localStorage.removeItem(STORAGE_DRAFT_KEY);
+                pendingUploads = {};
+                initData();
+                showStatus('Local draft cleared. Reloaded from live <code>data/bundles.json</code>.');
+            });
+
+            // Restore saved GitHub repo config (local browser only)
+            try {
+                const ghCfg = JSON.parse(localStorage.getItem(STORAGE_GH_KEY) || '{}');
+                if (ghCfg.repo) document.getElementById('ghRepo').value = ghCfg.repo;
+                if (ghCfg.branch) document.getElementById('ghBranch').value = ghCfg.branch;
+                if (ghCfg.token) document.getElementById('ghToken').value = ghCfg.token;
+            } catch {}
+
+            // Option B: One-Tap GitHub API Publish
+            document.getElementById('publishGithubBtn').addEventListener('click', async () => {
+                const repo = document.getElementById('ghRepo').value.trim();
+                const branch = document.getElementById('ghBranch').value.trim() || 'main';
+                const token = document.getElementById('ghToken').value.trim();
+
+                if (!repo || !token) {
+                    showStatus('Please enter your GitHub <strong>owner/repo</strong> and Fine-Grained Token first.');
+                    return;
+                }
+
+                localStorage.setItem(STORAGE_GH_KEY, JSON.stringify({ repo, branch, token }));
+                const btn = document.getElementById('publishGithubBtn');
+                btn.disabled = true;
+                showStatus('Publishing to GitHub...');
+
+                try {
+                    // 1. Upload any newly picked photos first
+                    for (const [imgPath, imgObj] of Object.entries(pendingUploads)) {
+                        showStatus(`Uploading photo: <code>${esc(imgPath)}</code>...`);
+                        await githubUpsertFile(repo, branch, token, imgPath, imgObj.base64, `Add bundle photo ${imgPath}`);
+                    }
+                    pendingUploads = {};
+                    document.getElementById('downloadPendingImgsBtn').style.display = 'none';
+
+                    // 2. Commit updated data/bundles.json
+                    showStatus('Committing <code>data/bundles.json</code>...');
+                    const jsonBase64 = utf8ToBase64(JSON.stringify(appData, null, 2));
+                    await githubUpsertFile(repo, branch, token, 'data/bundles.json', jsonBase64, 'Update Egypt tour bundles via Provider Studio');
+
+                    localStorage.removeItem(STORAGE_DRAFT_KEY);
+                    showStatus('<strong>Published live!</strong> GitHub Pages will update automatically within ~30–60 seconds.');
+                } catch (err) {
+                    showStatus(`<strong>Publish failed:</strong> ${esc(err.message)}. Verify repo name and token <code>Contents: Read and write</code> permission.`);
+                } finally {
+                    btn.disabled = false;
+                }
+            });
+
+            // Initialize App
+            initData();
+        });
+    </script>
+</body>
+</html>
